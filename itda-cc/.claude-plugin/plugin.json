@@ -1,7 +1,7 @@
 {
   "name": "itda-cc",
-  "description": "Claude Code 전용 — 스크립트가 직접 요청한다(itda-hyve 불요). 메일·일정·DART 공시·한국은행 ECOS, 키·계정은 .env 하나에서 읽는다.",
-  "version": "0.1.0",
+  "description": "Claude Code 전용 — 스크립트가 직접 요청한다(itda-hyve 불요). 메일·일정·DART 공시·한국은행 ECOS·호텔 요금 비교, 키·계정은 .env 하나에서 읽는다.",
+  "version": "0.2.0",
   "author": {
     "name": "스킬.잇다",
     "url": "https://github.com/itda-work"
@@ -17,6 +17,8 @@
     "dart",
     "ecos",
     "공시",
-    "경제통계"
+    "경제통계",
+    "hotel",
+    "호텔"
   ]
 }

@@ -1,0 +1,2 @@
+# hotel-search — 표준 라이브러리만 사용(별도 패키지 불필요).
+# 스크립트가 data.xotelo.com(요금·달력)과 open.er-api.com(환율)에 직접 요청한다. 키·브라우저 불필요.

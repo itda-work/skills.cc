@@ -1,5 +1,12 @@
 # Changelog — itda-cc
 
+## [0.2.0] - 2026-11-02
+
+### Added
+
+- `hotel-search` 0.1.0 — itda-travel:hotel-search 의 직접 호출판(Xotelo 요금·달력, ExchangeRate-API 환율). 키 불필요,
+  명령 한 번에 결과. 환율은 `~/.cache/itda-cc/hotel-search/` 에 하루 한 번만 받는다.
+
 ## [0.1.0] - 2026-11-02
 
 ### Added

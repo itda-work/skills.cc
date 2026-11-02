@@ -2,7 +2,7 @@
 
 [스킬.잇다](https://itda.work)의 **Claude Code 전용** 스킬팩 저장소입니다.
 
-스킬 스크립트가 사용자 PC 에서 메일·일정·DART 공시·한국은행 ECOS 에 **직접** 요청합니다(itda-hyve 불필요).
+스킬 스크립트가 사용자 PC 에서 메일·일정·DART 공시·한국은행 ECOS·호텔 요금 비교 API 에 **직접** 요청합니다(itda-hyve 불필요).
 Claude Cowork 에서는 이 팩 대신 `itda-work/skills.pub` 를 쓰세요.
 
 ## 설치
@@ -19,6 +19,7 @@ Claude Cowork 에서는 이 팩 대신 `itda-work/skills.pub` 를 쓰세요.
 
 - 파일 권한은 본인만 읽게 둡니다(`chmod 600 ~/.env`).
 - 키 값을 대화창에 붙여 넣지 마세요 — `.env` 에 적으면 됩니다.
+- `hotel-search` 는 키가 필요 없습니다.
 - 스킬별 키 이름과 발급 방법은 각 스킬의 `GUIDE.md` 에 있습니다.
 
 ## 개발 저장소
