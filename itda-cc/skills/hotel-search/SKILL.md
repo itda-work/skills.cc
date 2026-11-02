@@ -74,6 +74,8 @@ if (-not $c) { throw 'SKILL_DIR 을 정하지 못했다 — 스킬을 불러올 
 $env:SKILL_DIR = $c[0]
 ```
 
+**Python 명령** — 이 문서의 예시는 macOS/Linux 기준 `python3` 로 적었다. **Windows**(PowerShell·Git Bash 모두)에서는 `python3` 대신 `py -3` 로 실행하고, `py` 가 없으면 `python` 을 쓴다. Windows 의 `python3` 는 대개 Microsoft Store 별칭이라 실행되지 않는다(exit 49). 어느 명령이든 Python 3.10 이상이어야 한다.
+
 ```bash
 # macOS/Linux
 python3 "$SKILL_DIR/scripts/hotel_search.py" resolve "https://www.tripadvisor.com/Hotel_Review-g294197-d5250436-Reviews-Summit_Hotel_Seoul-Seoul.html"

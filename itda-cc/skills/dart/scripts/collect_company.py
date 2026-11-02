@@ -18,8 +18,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import cc_env
-import dart_api
+import cc_deps
+
+if __name__ == "__main__":
+    # 의존성(defusedxml, Windows 는 zoneinfo 용 tzdata) — 없으면 uv 격리 환경으로 다시 실행하거나 설치 안내를 내고 끝난다
+    cc_deps.ensure(["defusedxml"] + (["tzdata"] if sys.platform == "win32" else []),
+                   Path(__file__).resolve().parent.parent / "requirements.txt")
+
+import cc_env  # noqa: E402
+import dart_api  # noqa: E402
 
 # SPEC-DART-FEEDBACK-001: --report 한글 라벨 SSOT (cmd_finance·cmd_compare 공유)
 _REPORT_LABELS = {

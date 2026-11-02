@@ -1,5 +1,15 @@
 # Changelog — itda-cc
 
+## [0.3.0] - 2026-11-02
+
+### Changed
+
+- pip 의존성을 uv 로 확보한다 — 공용 모듈 `shared/cc_deps.py`. 진입 스크립트가 의존 모듈을 못 찾으면 uv 가 있을 때 같은
+  인터프리터 기준 격리 환경으로 다시 실행하고, 없으면 설치 명령을 안내하고 멈춘다. 첫 적용: `dart` 0.2.0(의존이 있는 유일한 itda-cc 스킬).
+- Windows 의 Python 명령 안내 — 5개 스킬 SKILL.md 의 SKILL_DIR 블록 뒤에 「Windows 는 `python3` 대신 `py -3`, `py` 가 없으면 `python`」
+  문단을 넣었다(Windows 의 `python3` 는 대개 Microsoft Store 별칭이라 exit 49 로 실패한다 — Windows 10 Claude Code 실측).
+  `cc_deps` 의 설치 안내도 같은 순서로 고른다. 가드: `shared/tests/test_skill_python_command.py`.
+
 ## [0.2.0] - 2026-11-02
 
 ### Added

@@ -1,5 +1,13 @@
 # Changelog — dart (itda-cc)
 
+## 0.2.0 (2026-11-02)
+
+- 의존성을 따로 설치하지 않는다. `defusedxml`(Windows 는 `tzdata` 도)이 없으면 `collect_company.py` 가 uv 격리 환경
+  (`uv run --no-project --python <같은 인터프리터> --with-requirements requirements.txt`)으로 자기 자신을 다시 실행한다.
+  사용자 Python 의 site-packages 는 건드리지 않는다(PEP 668·쓰기 권한 벽 없음). uv 가 없으면 `deps_missing` 과 설치 명령
+  (`pip install --user -r …`·uv 설치)을 내고 멈춘다. 공용 모듈 `itda-cc/shared/cc_deps.py`.
+- SKILL.md 의 `pip install` 단계를 지웠다.
+
 ## 0.1.0 (2026-11-02)
 
 - 첫 판. itda-gov:dart 0.21.1 의 명령(search·info·finance·employees·profile·disclosure·business·compare·raw)·옵션·출력 JSON 을

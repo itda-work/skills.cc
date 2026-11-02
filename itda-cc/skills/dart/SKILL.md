@@ -6,7 +6,7 @@ description: >
   기업 프로필·재무·인력·사업보고서·공시 목록과 배당·증자·소송 등 주요사항을 반환하며 키는 .env 의 DART_API_KEY 에서 읽습니다.
   [책임 경계] 본 스킬은 Claude Code 에서 DART 직접 조회 전담 — itda-gov:dart 는 Cowork·itda-hyve 경로.
 license: Apache-2.0
-compatibility: "Claude Code 전용. Python 3.10+. 스크립트가 opendart.fss.or.kr 에 직접 요청하고, 키는 .env 의 DART_API_KEY 에서 읽는다."
+compatibility: "Claude Code 전용. Python 3.10+(의존성 defusedxml 은 uv 가 있으면 자동 격리 실행, 없으면 pip 안내). 스크립트가 opendart.fss.or.kr 에 직접 요청하고, 키는 .env 의 DART_API_KEY 에서 읽는다."
 allowed-tools: "Bash, Read, Write"
 user-invocable: true
 argument-hint: "[search|info|finance|employees|profile|disclosure|business|compare|raw] [--name 회사명] [--corp-code 코드] [--year 연도] [--report annual|q1|q2|q3] [--prefer annual|latest] [--detail] [--unit auto|million|eok|jo] [--with-ratios] [--with-prior] [--endpoint 엔드포인트] [--param key=value] [--format json|table|csv]"
@@ -14,7 +14,7 @@ metadata:
   author: "스킬.잇다 <dev@itda.work>"
   category: "domain"
   status: "active"
-  version: "0.1.0"
+  version: "0.2.0"
   created_at: "2026-11-02"
   updated_at: "2026-11-02"
   tags: "DART, CSV, company, financial, disclosure, competitor, business report, compare"
@@ -63,10 +63,14 @@ c=$(for d in "$H"/plugins/synced/*/"$P"/skills/"$S" "$H"/plugins/synced/*/"$P"~*
 [ "$(printf "%s\n" "$c" | grep -c .)" -gt 1 ] && { printf "SKILL_DIR 후보가 여럿이다 — 어느 설치본이 쓰이는지 모른다:\n%s\n" "$c" >&2; exit 1; }
 printf "%s\n" "$c"' _ dart itda-cc "${SKILL_DIR:-}" "${CLAUDE_PLUGIN_ROOT:-}" "${CLAUDE_CONFIG_DIR:-}")
 : "${SKILL_DIR:?정하지 못했다 — 스킬을 불러올 때 받은 base directory(이 SKILL.md 가 있는 절대경로)를 SKILL_DIR 에 넣고 이 블록을 다시 실행하라}"
-
-# 의존성(defusedxml — XML 보안 파싱)
-python3 -m pip install --user -r "$SKILL_DIR/requirements.txt"
 ```
+
+**Python 명령** — 이 문서의 예시는 macOS/Linux 기준 `python3` 로 적었다. **Windows**(PowerShell·Git Bash 모두)에서는 `python3` 대신 `py -3` 로 실행하고, `py` 가 없으면 `python` 을 쓴다. Windows 의 `python3` 는 대개 Microsoft Store 별칭이라 실행되지 않는다(exit 49). 어느 명령이든 Python 3.10 이상이어야 한다.
+
+**의존성은 따로 설치하지 않는다.** `defusedxml`(XML 보안 파싱, Windows 는 `tzdata` 도)이 없으면 스크립트가 uv 격리 환경으로 받아
+다시 실행한다 — 첫 실행에 stderr 로 `(필요한 패키지 … 를 uv 격리 환경으로 받아 실행합니다)` 한 줄이 나오는 것은 정상이다.
+사용자 Python 에는 아무것도 설치하지 않는다(uv 캐시에만 남는다). uv 도 없으면 `"error":"deps_missing"` 과 `install` 명령 목록을
+내고 멈춘다 — 그 명령을 사용자에게 보여 주고, 설치해도 되는지 확인받은 뒤에만 실행한다.
 
 ## 명령
 
