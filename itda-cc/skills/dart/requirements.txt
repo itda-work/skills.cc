@@ -1,0 +1,2 @@
+defusedxml>=0.7.1
+tzdata>=2024.1; sys_platform == "win32"

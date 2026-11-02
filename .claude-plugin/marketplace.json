@@ -1,0 +1,19 @@
+{
+  "name": "itda-skills-cc",
+  "owner": {
+    "name": "스킬.잇다",
+    "email": "allieuslee@gmail.com"
+  },
+  "metadata": {
+    "description": "Claude Code 전용 스킬 마켓플레이스 — 스크립트가 직접 요청하고 키는 .env 에서 읽는다(Cowork 는 skills.pub 를 쓴다).",
+    "version": "0.1.0",
+    "language": "ko"
+  },
+  "plugins": [
+    {
+      "name": "itda-cc",
+      "source": "./itda-cc",
+      "description": "Claude Code 전용 — 스크립트가 직접 요청한다(itda-hyve 불요). 메일·일정·DART 공시·한국은행 ECOS, 키·계정은 .env 하나에서 읽는다."
+    }
+  ]
+}
