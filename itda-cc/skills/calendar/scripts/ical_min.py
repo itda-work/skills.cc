@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-SEOUL = ZoneInfo("Asia/Seoul")
+# 서울 — 서머타임이 없어 +09:00 고정과 같다. ZoneInfo("Asia/Seoul") 는 Windows 에서 tzdata 패키지가 없으면 import 부터 죽는다.
+SEOUL = timezone(timedelta(hours=9), "KST")
 PRODID = "-//CalDAV Client//KO"  # 제품·조직 이름을 싣지 않는다(외부 서버에 남는 값)
 SEOUL_VTIMEZONE = [
     "BEGIN:VTIMEZONE", "TZID:Asia/Seoul", "BEGIN:STANDARD", "TZOFFSETFROM:+0900", "TZOFFSETTO:+0900",
@@ -172,6 +173,9 @@ def parse_duration(s: str) -> timedelta:
     return -td if sign == "-" else td
 
 
+_SEOUL_TZIDS = {"Asia/Seoul", "ROK", "Korea Standard Time"}  # 마지막은 Windows(Outlook) 표기
+
+
 def _tz_from_vtimezone(cal: Comp | None, tzid: str):
     if cal is None:
         return None
@@ -200,7 +204,9 @@ def parse_dt(prop: Prop, cal: Comp | None = None) -> tuple[date | datetime, bool
         return naive.replace(tzinfo=timezone.utc), False
     tzid = prop.params.get("TZID")
     tz = None
-    if tzid:
+    if tzid in _SEOUL_TZIDS:
+        tz = SEOUL
+    elif tzid:
         try:
             tz = ZoneInfo(tzid)
         except (ZoneInfoNotFoundError, ValueError):

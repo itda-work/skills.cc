@@ -1,5 +1,11 @@
 # Changelog — itda-cc:calendar
 
+## 0.1.1 (2026-11-03)
+
+- Windows 에서 `tzdata` 패키지가 없으면 `ical_min` import 부터 `ZoneInfoNotFoundError` 로 죽던 것을 고쳤다 — 서울 시간대를
+  +09:00 고정으로 둔다(서머타임 없음). `TZID=Asia/Seoul`·`ROK`·`Korea Standard Time` 은 tz 데이터베이스 없이 서울로 읽는다.
+  가드: `tests/test_no_tzdata.py`(tz 데이터베이스를 비운 하위 프로세스 — ZoneInfo 복원 뮤테이션 RED).
+
 ## 0.1.0 (2026-11-02)
 
 - 첫 판. Claude Code 전용 — 스크립트 `scripts/cal.py` 가 `.env` 하나(`--env-file` > `./.env` > `~/.env`)의 메일 계정 앱 비밀번호로

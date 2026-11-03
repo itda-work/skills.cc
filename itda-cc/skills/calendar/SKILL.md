@@ -13,7 +13,7 @@ argument-hint: "이번 주 일정 보여줘 | 내일 3시 회의 추가해줘 | 
 metadata:
   author: "스킬.잇다 <dev@itda.work>"
   category: "domain"
-  version: "0.1.0"
+  version: "0.1.1"
   created_at: "2026-11-02"
   updated_at: "2026-11-02"
   tags: "calendar, caldav, icloud, apple, naver, event, schedule, recurrence, rrule, alarm, reminder, timezone, etag, multi-account, free-slots, availability, search, delete-confirmation, dotenv, claude-code"

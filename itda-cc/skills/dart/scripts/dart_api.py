@@ -25,9 +25,25 @@ import time
 import zipfile
 from pathlib import Path
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
-import defusedxml.ElementTree as ET
+from xml.etree import ElementTree as ET
+
+# 한국 표준시 — 서머타임이 없어 +09:00 고정과 같다. zoneinfo 는 Windows 에서 tzdata 패키지를 요구하므로 쓰지 않는다.
+KST = datetime.timezone(datetime.timedelta(hours=9), "KST")
+
+
+class _NoDTDBuilder(ET.TreeBuilder):
+    """DTD 가 든 문서를 거부한다 — 엔티티 확장·외부 참조는 전부 DTD 안에서만 선언된다. DART 응답에는 DTD 가 없다."""
+
+    def doctype(self, name, pubid, system):
+        raise ET.ParseError("DTD(엔티티 선언·외부 참조)가 든 XML 은 읽지 않습니다")
+
+
+def _xml_fromstring(data: bytes) -> ET.Element:
+    """``ET.fromstring`` + DTD 거부(defusedxml 대체 — 표준 라이브러리만). 실패는 ``ET.ParseError``."""
+    parser = ET.XMLParser(target=_NoDTDBuilder())
+    parser.feed(data)
+    return parser.close()
 
 import cc_http
 
@@ -217,7 +233,7 @@ def _give_up(exc: Exception) -> Exception:
 
 def today_kst() -> datetime.date:
     """KST(Asia/Seoul) 기준 오늘 — UTC 컨테이너에서도 창·신선도 계산이 맞게. 테스트는 이 함수를 바꿔 끼운다."""
-    return datetime.datetime.now(ZoneInfo("Asia/Seoul")).date()
+    return datetime.datetime.now(KST).date()
 
 
 def _ymd(d: datetime.date) -> str:
@@ -276,7 +292,7 @@ def open_zip_body(data: bytes, where: str) -> zipfile.ZipFile:
     head = data[:512].lstrip()
     if head.startswith(b"<?xml") or head.startswith(b"<result"):
         try:
-            root = ET.fromstring(data)
+            root = _xml_fromstring(data)
         except ET.ParseError as exc:
             raise ResponseError(f"ZIP 도 오류 XML 도 아닙니다 ({where}): {snippet(data)}", retry="auto") from exc
         status = (root.findtext("status") or "").strip()
@@ -476,7 +492,7 @@ def load_corp_list(zf: zipfile.ZipFile) -> list[dict[str, str]]:
     xml_name = next((n for n in names if n.lower().endswith(".xml")), names[0])
     xml_content = _safe_zip_read(zf, xml_name)
     try:
-        root = ET.fromstring(xml_content)
+        root = _xml_fromstring(xml_content)
     except ET.ParseError as exc:
         raise DARTAPIError(f"XML 파싱 실패: {exc}") from exc
     return [

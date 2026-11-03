@@ -1,5 +1,12 @@
 # Changelog — dart (itda-cc)
 
+## 0.3.0 (2026-11-03)
+
+- **설치할 패키지가 없다** — 표준 라이브러리만 쓴다. `defusedxml` 은 `xml.etree` + DTD 거부로, Windows 의 `tzdata` 는 한국 표준시
+  +09:00 고정으로 바꿨다. 그래서 `collect_company.py` 의 uv 격리 재실행(`cc_deps.ensure`)·`deps_missing` 안내 경로도, `requirements.txt` 도 없다 — 첫 실행부터 바로 돈다.
+- DTD·엔티티 선언이 든 XML 응답이 `EntitiesForbidden` 트레이스백으로 새던 것을 typed 오류(`ResponseError`·`DARTAPIError`)로 거부한다.
+  가드: `tests/test_stdlib_only.py`(뮤테이션 RED — DTD 훅 무력화·ZoneInfo 복원).
+
 ## 0.2.0 (2026-11-02)
 
 - 의존성을 따로 설치하지 않는다. `defusedxml`(Windows 는 `tzdata` 도)이 없으면 `collect_company.py` 가 uv 격리 환경

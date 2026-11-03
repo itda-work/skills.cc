@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code 전용 스킬 마켓플레이스 — 스크립트가 직접 요청하고 키는 .env 에서 읽는다(Cowork 는 skills.pub 를 쓴다).",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "language": "ko"
   },
   "plugins": [
