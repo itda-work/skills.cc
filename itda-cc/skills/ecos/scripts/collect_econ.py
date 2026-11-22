@@ -2,8 +2,8 @@
 """경제지표 수집 CLI — 한국은행 ECOS (Claude Code 전용, 직접 호출).
 
 명령 한 번에 결과가 나온다. 스크립트가 ECOS 에 직접 요청하고(``ecos_api.Client``), 1000행씩 ``list_total_count``
-까지 받아 전량 대조한다. 키는 ``.env`` 의 ``ECOS_API_KEY`` 에서 읽는다(``--env-file`` > ``./.env`` > ``~/.env`` —
-처음 찾은 파일 하나만).
+까지 받아 전량 대조한다. 키는 계정 파일의 ``ECOS_API_KEY``(계정.toml 이면 ``[ecos] 키``)에서 읽는다(``--env-file`` > 현재 폴더 >
+홈 — 처음 찾은 계정 파일 하나만).
 
 사용법 (통계표코드는 라이브 검증 — 2026-06-09):
     python3 scripts/collect_econ.py key
@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
         d = (lambda v: argparse.SUPPRESS) if suppress else (lambda v: v)
         p.add_argument("--format", choices=["json", "table"], default=d("json"), help="출력 형식 (기본: json)")
         p.add_argument("--env-file", dest="env_file", default=d(None), metavar="PATH",
-                       help="키를 읽을 .env (기본: ./.env, 없으면 ~/.env — 처음 찾은 파일 하나만)")
+                       help="키를 읽을 계정 파일 .env 또는 .toml (기본: 현재 폴더, 없으면 홈의 .env·계정.toml — 처음 찾은 파일 하나만)")
         p.add_argument("--max-calls", dest="max_calls", type=int, default=d(ecos_api.CONFIRM_CALLS), metavar="N",
                        help=f"1쪽 뒤 더 받을 호출 상한(1000행마다 1회, 기본 {ecos_api.CONFIRM_CALLS}). "
                             "넘으면 받지 않고 confirm_first")

@@ -84,7 +84,7 @@ def _mark_token_used(token: str) -> None:
 # ---------------------------------------------------------------- 하위 명령
 
 def cmd_accounts(env, args) -> tuple[dict, int]:
-    accts = mail_accounts.discover(env.values)
+    accts = mail_accounts.discover(env.values, env.sections)
     return {"accounts": [a.to_public() for a in accts]}, EXIT_OK
 
 
@@ -243,12 +243,12 @@ def cmd_send(env, args, acct) -> tuple[dict, int]:
     in_reply_to = (args.in_reply_to or "").strip() or None
     references = " ".join((args.references or "").split()) or None
     payload = {
-        "account": acct.name, "from": acct.email, "to": to, "cc": cc, "bcc": bcc, "subject": args.subject,
+        "account": acct.name, "from": acct.sender, "to": to, "cc": cc, "bcc": bcc, "subject": args.subject,
         "body_text": body_text, "body_html": body_html, "in_reply_to": in_reply_to, "references": references,
         "attachments": [{k: a[k] for k in ("path", "size", "sha256")} for a in atts],
     }
     preview = {
-        "from": acct.email, "to": to, "cc": cc, "bcc": bcc, "subject": args.subject,
+        "from": acct.sender, "to": to, "cc": cc, "bcc": bcc, "subject": args.subject,
         "body_preview": (body_text if body_text is not None else mail_message.html_to_text(body_html or ""))[:500],
         "body_chars": len(body_text or body_html or ""), "html": body_html is not None,
         "attachments": [{"filename": a["filename"], "path": a["path"], "size": a["size"]} for a in atts],
@@ -261,7 +261,7 @@ def cmd_send(env, args, acct) -> tuple[dict, int]:
             EXIT_NEEDS_CONFIRM
     mail_message.check_token(args.confirm, payload)
     _mark_token_used(args.confirm.strip())
-    msg = mail_message.build_message(sender=acct.email, to=to, cc=cc, subject=args.subject, body_text=body_text,
+    msg = mail_message.build_message(sender=acct.sender, to=to, cc=cc, subject=args.subject, body_text=body_text,
                                      body_html=body_html, attachments=atts, in_reply_to=in_reply_to,
                                      references=references)
     rcpts = [a.split("<")[-1].rstrip(">").strip() for a in to + cc + bcc]
@@ -298,8 +298,8 @@ def cmd_send(env, args, acct) -> tuple[dict, int]:
 # ---------------------------------------------------------------- 진입점
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="mail.py", description="IMAP/SMTP 메일 CLI(.env 계정)")
-    p.add_argument("--env-file", help="읽을 .env 경로(없으면 ./.env → ~/.env 중 처음 것)")
+    p = argparse.ArgumentParser(prog="mail.py", description="IMAP/SMTP 메일 CLI(계정 파일 .env 또는 계정.toml)")
+    p.add_argument("--env-file", help="읽을 계정 파일(.env 또는 .toml) 경로(없으면 현재 폴더 → 홈의 .env·계정.toml 중 처음 것)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("accounts")
 
@@ -354,7 +354,7 @@ def run(argv: list[str] | None = None) -> int:
         env = load_env(args.env_file)
         out["env_file"] = str(env.path)
         emit_warnings(env)
-        accts = mail_accounts.discover(env.values)
+        accts = mail_accounts.discover(env.values, env.sections)
         secrets = [a.password for a in accts if a.password]
         if args.cmd == "accounts":
             body, code = cmd_accounts(env, args)

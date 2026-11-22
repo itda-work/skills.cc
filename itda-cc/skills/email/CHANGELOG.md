@@ -1,5 +1,13 @@
 # Changelog — itda-cc:email
 
+## 0.2.0 (2026-11-22)
+
+- 계정 파일 `계정.toml` 을 읽는다(itda-work/skills#83). 묶음 이름이 곧 계정 이름이다(`[naver]` → `naver`, `[gmail.회사]` → `gmail.회사`).
+  `"..."`·빈 값은 적지 않은 것으로 보고, 예시 그대로인 묶음은 `status: "empty"`(이름으로 부르면 `account_empty` 로 멈춤), 일부만 채운 묶음은 경고하고 건너뛴다.
+- `--account` 가 `회사 Gmail` 같은 말도 낱말로 맞춘다(제공자 낱말 + 별칭). 둘 이상 맞으면 `account_required` 로 멈춘다.
+- 선택 칸 `보내는이름` — 보낼 때 From 이 `이름 <주소>` 가 된다(미리보기·확인 토큰에도 실린다).
+- `.env` 와 꼬리말 키(`_WORK`)는 그대로 된다. 같은 폴더에 `.env` 와 `계정.toml` 이 함께 있으면 `account_file_conflict` 로 멈춘다.
+
 ## 0.1.0 (2026-11-02)
 
 - 첫 판. Claude Code 전용 — 스크립트 `scripts/mail.py` 가 `.env` 하나(`--env-file` > `./.env` > `~/.env`)의 앱 비밀번호로

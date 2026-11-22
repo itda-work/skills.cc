@@ -2,7 +2,7 @@
 """기업 정보 수집 CLI — DART 전자공시시스템 (Claude Code 전용, 직접 호출).
 
 명령 한 번에 결과가 나온다. 스크립트가 OpenDART 에 직접 요청하고(``dart_api.Client``), 키는 ``.env`` 의
-``DART_API_KEY`` 에서 읽는다(``--env-file`` > ``./.env`` > ``~/.env`` — 처음 찾은 파일 하나만).
+``DART_API_KEY``(계정.toml 이면 ``[dart] 키``)에서 읽는다(``--env-file`` > 현재 폴더 > 홈 — 처음 찾은 계정 파일 하나만).
 
 사용법:
     python3 scripts/collect_company.py search --name "삼성전자"
@@ -1046,7 +1046,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
         p.add_argument(
             "--env-file", dest="env_file", default=d(None), metavar="PATH",
-            help="키를 읽을 .env (기본: ./.env, 없으면 ~/.env — 처음 찾은 파일 하나만)",
+            help="키를 읽을 계정 파일 .env 또는 .toml (기본: 현재 폴더, 없으면 홈의 .env·계정.toml — 처음 찾은 파일 하나만)",
         )
         p.add_argument(
             "--cache-dir", dest="cache_dir", default=d(None), metavar="DIR",

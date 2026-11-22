@@ -13,11 +13,19 @@
 같은 제공자 계정이 둘 이상이면 키 끝에 `_<접미>` 를 붙인다(`NAVER_EMAIL_WORK` + `NAVER_APP_PASSWORD_WORK` →
 계정 이름 `naver_work`). 접미 없는 쌍은 제공자 이름 그대로(`naver`).
 
+계정 파일이 TOML(`계정.toml`)이면 묶음이 곧 계정이다: `[naver]` → `naver`, `[gmail.회사]` → `gmail.회사`
+(itda-work/skills#83). 칸은 `메일`·`앱비밀번호`·`보내는이름`(선택). 예시 `"..."` 그대로인 묶음은 `status: "empty"` 로 남아
+이름으로 부르면 "비어 있다" 고 멈춘다. `select` 는 `회사 Gmail` 같은 말도 낱말로 맞춘다(`cc_account_toml.match_names`).
+
 비밀번호는 `Account.password` 에만 있고 `to_public()` 에는 실리지 않는다.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+import cc_account_toml
+
+TOML_PROVIDER = {"naver": "naver", "gmail": "google", "daum": "daum", "icloud": "icloud"}
 
 PROVIDERS: dict[str, dict] = {
     "naver": {"email_key": "NAVER_EMAIL", "password_key": "NAVER_APP_PASSWORD",
@@ -59,16 +67,32 @@ class Account:
     smtp_port: int | None
     password: str | None = field(default=None, repr=False)
     missing: tuple[str, ...] = ()
+    sender_name: str | None = None
+    empty: bool = False  # TOML 예시 그대로인 묶음
 
     @property
     def ready(self) -> bool:
-        return not self.missing
+        return not self.missing and not self.empty
+
+    @property
+    def sender(self) -> str | None:
+        """From 머리줄 — 보내는이름이 있으면 `이름 <주소>`."""
+        if not self.email:
+            return None
+        if not self.sender_name:
+            return self.email
+        from email.headerregistry import Address
+        local, _, domain = self.email.rpartition("@")
+        return str(Address(display_name=self.sender_name, username=local, domain=domain))
 
     def to_public(self) -> dict:
+        status = "empty" if self.empty else ("ready" if self.ready else "incomplete")
         d = {"name": self.name, "provider": self.provider, "email": self.email,
              "imap_host": self.imap_host, "imap_port": self.imap_port,
              "smtp_host": self.smtp_host, "smtp_port": self.smtp_port,
-             "status": "ready" if self.ready else "incomplete"}
+             "status": status}
+        if self.sender_name:
+            d["sender_name"] = self.sender_name
         if self.missing:
             d["missing_keys"] = list(self.missing)
         return d
@@ -102,8 +126,27 @@ def _port(raw: str | None, default: int) -> int | None:
     return p if 1 <= p <= 65535 else None
 
 
-def discover(values: dict) -> list[Account]:
-    """`.env` 값에서 계정을 모은다. 이름순."""
+def discover_toml(sections) -> list[Account]:
+    """TOML 묶음에서 메일 계정을 모은다(이름순). 키 묶음(dart·ecos)·모르는 제공자는 뺀다."""
+    out: list[Account] = []
+    for sec in sections:
+        prov = TOML_PROVIDER.get(sec.provider)
+        if prov is None or sec.kind != "mail":
+            continue
+        cfg = PROVIDERS[prov]
+        out.append(Account(
+            name=cc_account_toml.nfc(sec.name), provider=prov, email=sec.get("email"),
+            imap_host=cfg["imap_host"], imap_port=cfg["imap_port"], smtp_host=cfg["smtp_host"],
+            smtp_port=cfg["smtp_port"], password=sec.get("password"),
+            missing=tuple(sec.missing) if sec.status == "partial" else (),
+            sender_name=sec.get("sender_name"), empty=sec.status == "empty"))
+    return sorted(out, key=lambda a: a.name)
+
+
+def discover(values: dict, sections=None) -> list[Account]:
+    """계정 파일 값에서 계정을 모은다. 이름순. sections(TOML 묶음)가 오면 그것만 본다."""
+    if sections:
+        return discover_toml(sections)
     accounts: list[Account] = []
     for prov, cfg in PROVIDERS.items():
         sfxs = _suffixes(values, cfg["email_key"]) | _suffixes(values, cfg["password_key"])
@@ -143,17 +186,23 @@ def select(accounts: list[Account], name: str | None) -> Account:
         if len(ready) == 1:
             return ready[0]
         if not ready:
-            raise MailError("no_account", "`.env` 에 쓸 수 있는 메일 계정이 없다.",
-                            hint="GUIDE.md 의 .env 예시대로 계정 키를 적어라.",
+            raise MailError("no_account", "계정 파일에 쓸 수 있는 메일 계정이 없다(예시 \"...\" 그대로인 묶음은 없는 것으로 본다).",
+                            hint="\"계정 파일 열어줘\"로 쓸 계정의 \"...\" 를 채우거나, GUIDE.md 의 예시대로 적어라.",
                             accounts=[a.to_public() for a in accounts])
         raise MailError("account_required", "계정이 여럿이다 — --account 로 하나를 고른다.",
                         accounts=[a.to_public() for a in ready])
-    want = name.strip().lower()
+    hits = cc_account_toml.match_names(name, [a.name for a in accounts])
+    if len(hits) > 1:
+        raise MailError("account_required", f"{name} 에 맞는 계정이 여럿이다 — --account 로 하나를 고른다.",
+                        accounts=[a.to_public() for a in accounts if a.name in hits])
     for a in accounts:
-        if a.name == want:
+        if hits and a.name == hits[0]:
+            if a.empty:
+                raise MailError("account_empty", f"계정 {a.name} 이 비어 있다(예시 \"...\" 그대로).",
+                                hint="\"계정 파일 열어줘\"로 그 묶음의 \"...\" 를 채워라.", account=a.to_public())
             if not a.ready:
                 raise MailError("account_incomplete", f"계정 {a.name} 의 키가 모자란다: {', '.join(a.missing)}",
-                                hint="그 .env 파일에 키를 채워라.", account=a.to_public())
+                                hint="그 계정 파일에 값을 채워라.", account=a.to_public())
             return a
     raise MailError("not_found", f"계정 {name} 이 없다.", hint="accounts 로 이름을 확인하라.",
                     accounts=[a.to_public() for a in accounts])

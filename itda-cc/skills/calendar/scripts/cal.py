@@ -343,8 +343,8 @@ def cmd_delete(dav, args) -> tuple[dict, int]:
 # ---------------------------------------------------------------- 진입점
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cal.py", description="CalDAV 일정 CLI(.env 계정)")
-    p.add_argument("--env-file", help="읽을 .env 경로(없으면 ./.env → ~/.env 중 처음 것)")
+    p = argparse.ArgumentParser(prog="cal.py", description="CalDAV 일정 CLI(계정 파일 .env 또는 계정.toml)")
+    p.add_argument("--env-file", help="읽을 계정 파일(.env 또는 .toml) 경로(없으면 현재 폴더 → 홈의 .env·계정.toml 중 처음 것)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("accounts")
 
@@ -386,7 +386,7 @@ def run(argv: list[str] | None = None) -> int:
         env = load_env(args.env_file)
         out["env_file"] = str(env.path)
         emit_warnings(env)
-        accts = cal_accounts.discover(env.values)
+        accts = cal_accounts.discover(env.values, env.sections)
         secrets = [a.password for a in accts if a.password]
         if args.cmd == "accounts":
             body, code = {"accounts": [a.to_public() for a in accts]}, EXIT_OK

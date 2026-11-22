@@ -1,27 +1,27 @@
 ---
 name: calendar
 description: >
-  네이버·아이클라우드·직접 입력 CalDAV 캘린더에 .env 의 앱 비밀번호로 직접 붙어 일정을 조회·검색·추가·수정·삭제하고 빈 시간을 찾는 Claude Code 전용 스킬입니다.
+  네이버·아이클라우드·직접 입력 CalDAV 캘린더에 계정 파일(계정.toml·.env)의 앱 비밀번호로 직접 붙어 일정을 조회·검색·추가·수정·삭제하고 빈 시간을 찾는 Claude Code 전용 스킬입니다.
   "내일 3시 회의 추가해줘", "이번 주 일정 보여줘", "다음 주 1시간 빈 시간 찾아줘", "그 약속 취소해줘"처럼 말하면 됩니다.
   수정은 조회한 etag 로만, 삭제는 미리보기 승인 뒤에만 합니다. Google 캘린더는 지원하지 않습니다.
   [책임 경계] 본 스킬은 Claude Code 의 일정 전담 — itda-work:calendar 는 Cowork·itda-hyve 경로.
 license: Apache-2.0
-compatibility: "Claude Code 전용. Python 3.10+ (표준 라이브러리만 — 설치할 패키지 없음). 계정은 .env 파일 하나에서 읽는다."
+compatibility: "Claude Code 전용. Python 3.10+ (표준 라이브러리만 — 설치할 패키지 없음). 계정은 계정 파일 하나(계정.toml 또는 .env)에서 읽는다 — 계정.toml 은 Python 3.11+."
 allowed-tools: "Bash, Read, Write"
 user-invocable: true
 argument-hint: "이번 주 일정 보여줘 | 내일 3시 회의 추가해줘 | 빈 시간 찾아줘"
 metadata:
   author: "스킬.잇다 <dev@itda.work>"
   category: "domain"
-  version: "0.1.1"
+  version: "0.2.0"
   created_at: "2026-11-02"
-  updated_at: "2026-11-02"
+  updated_at: "2026-11-22"
   tags: "calendar, caldav, icloud, apple, naver, event, schedule, recurrence, rrule, alarm, reminder, timezone, etag, multi-account, free-slots, availability, search, delete-confirmation, dotenv, claude-code"
 ---
 
 # calendar (Claude Code)
 
-일정은 **이 스킬의 스크립트 `cal.py` 로만** 다룬다. 스크립트가 `.env` 의 앱 비밀번호로 CalDAV 서버에 직접 붙는다.
+일정은 **이 스킬의 스크립트 `cal.py` 로만** 다룬다. 스크립트가 계정 파일의 앱 비밀번호로 CalDAV 서버에 직접 붙는다.
 웹 캘린더 브라우저·내장 fetch·다른 도구로 돌아가지 않는다.
 
 ## 준비
@@ -49,16 +49,24 @@ printf "%s\n" "$c"' _ calendar itda-cc "${SKILL_DIR:-}" "${CLAUDE_PLUGIN_ROOT:-}
 이후 명령은 모두 `python3 "$SKILL_DIR/scripts/cal.py" <하위 명령> …` 이다(Python 3.10+, 표준 라이브러리만).
 출력은 JSON 한 개다. **exit 0** 성공 · **1** 오류(`error`·`message`·`hint`) · **3** 삭제 미리보기(아직 지우지 않음).
 
-### `.env` — 계정은 파일 하나에서만
+### 계정 파일 — 하나에서만
 
-스크립트는 `--env-file <경로>` → 현재 폴더 `./.env` → `~/.env` 순으로 **처음 찾은 파일 하나만** 읽는다(합치지 않는다,
-프로세스 환경변수는 보지 않는다). 출력 JSON 의 `env_file` 이 실제로 읽은 파일이고, `account`·`email` 이 쓴 계정이다.
+스크립트는 `--env-file <경로>` → 현재 폴더 → 홈 폴더 순으로 **처음 찾은 계정 파일 하나만** 읽는다(합치지 않는다,
+프로세스 환경변수는 보지 않는다). 계정 파일은 `계정.toml`(새 형식) 또는 `.env` 다. **같은 폴더에 둘 다 있으면 멈춘다**
+(`account_file_conflict` — 어느 쪽을 남길지 사용자에게 묻는다. 지우지 않는다). 출력 JSON 의 `env_file` 이 실제로 읽은 파일이다.
 
-- **`.env` 를 Read·cat·grep 으로 열지 않는다. 키·비밀번호 값을 대화에 출력하지 않는다.** 어떤 계정이 있는지는 `accounts` 결과로만 본다.
-- 사용자가 비밀번호를 대화에 붙여 넣으면 **쓰지 않는다.** "그 값은 쓰지 않았어요. `.env` 파일에 직접 적어 주세요(형식은 GUIDE.md)" 라고 안내한다.
-- `env_key_missing` 이면 출력의 파일 경로와 **없는 키 이름**을 알리고 멈춘다. 다른 `.env` 를 찾아 나서지 않는다.
+- **계정 파일(`계정.toml`·`.env`)을 Read·cat·grep 으로 열지 않는다. 키·비밀번호 값을 대화에 출력하지 않는다.**
+- 사용자가 비밀번호·키를 대화에 붙여 넣으면 **쓰지 않는다.** "그 값은 쓰지 않았어요. 계정 파일에 직접 적어 주세요" 라고 하고
+  "계정 파일 열어줘"(`itda-cc:account-file`)를 권한다. 계정 파일이 없으면(`env_file_missing`) "계정 파일 만들어줘" 를 권한다.
+- `account_file_syntax`(계정 파일을 읽지 못했다)면 출력의 `lines`(줄 번호·칸 이름)를 그대로 전하고 "계정 파일 검사해줘"·"계정 파일 고쳐줘" 를 권한다.
+- 권한 경고(`chmod 600`)·건너뛴 묶음 경고가 stderr 에 나오면 사용자에게 한 줄 전한다.
+- `env_key_missing` 이면 출력의 파일 경로와 **없는 키 이름**을 알리고 멈춘다. 다른 계정 파일을 찾아 나서지 않는다.
 
-캘린더 계정은 **메일 계정 자격증명 그대로**다(키 이름·발급은 `GUIDE.md`):
+`계정.toml` 이면 메일 묶음이 곧 캘린더 계정이다 — `[naver]` → `naver`, `[icloud.가족]` → `icloud.가족`(CalDAV 주소는 자동).
+`[gmail…]`·`[daum…]` 은 `supported: false`, 예시 그대로인 묶음도 `supported: false`(이유: 비어 있다). 직접 입력 CalDAV(`CALDAV_URL`)는
+`계정.toml` 에 칸이 없어 `.env` 로만 쓴다.
+
+`.env` 이면 캘린더 계정은 **메일 계정 자격증명 그대로**다(키 이름·발급은 `GUIDE.md`):
 
 | 계정 이름 | 키 | CalDAV 주소 |
 |---|---|---|
@@ -78,9 +86,9 @@ python3 "$SKILL_DIR/scripts/cal.py" accounts
 → `accounts[]`(`name`·`provider`·`email`·`caldav_url`·`calendar.supported`·`calendar.reason`).
 
 - **`calendar.supported` 가 `true` 인 계정에만** 다른 명령을 쓴다. `false` 면 부르지 말고 `calendar.reason` 을 **그대로** 사용자에게 전한다(Google·다음은 "지원하지 않는다", 직접 입력은 무엇이 모자란지).
-- 사용자가 "네이버 캘린더" 처럼 말하면 `name` 또는 `email` 도메인이 맞고 `supported: true` 인 계정을 고른다. 맞는 것이 둘 이상이거나 없으면 목록을 보여 주고 묻는다.
+- 사용자가 "네이버 캘린더"·"회사 네이버 일정" 처럼 말하면 제공자 낱말(네이버·아이클라우드)과 별칭(회사·가족…)을 계정 이름에 맞춰 `supported: true` 인 계정을 고른다(`--account "회사 네이버"` 도 스크립트가 같은 규칙으로 맞춘다). 맞는 것이 둘 이상이거나 없으면 목록을 보여 주고 묻는다.
   계정을 말하지 않았는데 `supported: true` 가 하나뿐이면 `--account` 를 생략해도 그것을 쓴다.
-- `supported: true` 가 하나도 없으면 GUIDE.md 의 `.env` 예시(네이버·아이클라우드 또는 `CALDAV_URL`)를 안내하고 멈춘다.
+- `supported: true` 가 하나도 없으면 "계정 파일 열어줘"로 네이버·아이클라우드 묶음을 채우라고(또는 GUIDE.md 의 `.env` 예시) 안내하고 멈춘다.
 
 ## 계약 1 — 조회 먼저 (범위·캘린더를 정하고 본다)
 
@@ -285,7 +293,8 @@ python3 "$SKILL_DIR/scripts/cal.py" put --account naver --calendar 업무 --uid 
 
 | 상황 | 대응 |
 |---|---|
-| `env_file_missing` · `env_key_missing` · `no_account` | 출력의 파일 경로·없는 키 이름을 알리고 GUIDE.md 의 `.env` 형식을 안내한 뒤 멈춤 |
+| `env_file_missing` · `env_key_missing` · `no_account` | 출력의 파일 경로·없는 키 이름을 알리고 "계정 파일 열어줘"(없으면 "만들어줘")를 권한 뒤 멈춤 |
+| `account_file_syntax` · `account_file_conflict` · `account_file_python` | `lines`·`files` 를 그대로 전하고 멈춤 — "계정 파일 검사해줘" 를 권한다 |
 | `not_supported` | `message`(사유)를 그대로 전하고 멈춤(Google·다음 등) |
 | `account_required` | 출력의 `accounts[]` 를 보여 주고 어느 계정인지 묻는다 |
 | `auth_error` | 앱 비밀번호가 틀렸거나 바뀌었다. GUIDE.md 의 앱 비밀번호 절을 안내 |

@@ -1,5 +1,9 @@
 # Changelog — ecos (itda-cc)
 
+## 0.1.1 (2026-11-22)
+
+- 키를 계정 파일 `계정.toml` 의 `[ecos] 키` 에서도 읽는다(itda-work/skills#83). `"..."` 그대로면 `env_key_missing`. `.env` 의 `ECOS_API_KEY` 는 그대로 된다.
+
 ## 0.1.0 (2026-11-02)
 
 - 첫 판. itda-gov:ecos 0.12.1 의 명령(key·search·items·tables·word)과 출력 JSON 을 Claude Code 전용으로 옮겼다.

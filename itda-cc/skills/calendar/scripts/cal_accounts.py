@@ -10,10 +10,16 @@
 | Gmail·다음 | — | **지원하지 않는다** (목록에 `supported: false` 로 사유와 함께 보인다) |
 
 접미 규칙은 메일과 같다(`NAVER_EMAIL_WORK` → `naver_work`, `CALDAV_URL_TEAM` → `custom_team`).
+
+계정 파일이 TOML(`계정.toml`)이면 메일 묶음이 곧 캘린더 계정이다(`[naver]` → `naver`, `[icloud.가족]` → `icloud.가족`,
+기본 CalDAV 주소). Gmail·다음 묶음은 `supported: false`. 회사 CalDAV(`CALDAV_URL`)는 TOML 에 칸이 없어 `.env` 로만 쓴다.
+`select` 는 `회사 네이버` 같은 말도 낱말로 맞춘다(`cc_account_toml.match_names`).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+import cc_account_toml
 
 PROVIDERS = {
     "naver": {"login_key": "NAVER_EMAIL", "password_key": "NAVER_APP_PASSWORD", "url_key": "NAVER_CALDAV_URL",
@@ -84,7 +90,29 @@ def _check_url(url: str | None, key: str) -> str | None:
     return None
 
 
-def discover(values: dict) -> list[CalAccount]:
+def discover_toml(sections) -> list[CalAccount]:
+    out: list[CalAccount] = []
+    for sec in sections:
+        if sec.kind != "mail":
+            continue
+        name = cc_account_toml.nfc(sec.name)
+        prov = {"gmail": "google"}.get(sec.provider, sec.provider)
+        login, pw = sec.get("email"), sec.get("password")
+        if sec.status == "empty":
+            out.append(CalAccount(name, prov, None, None, False, f"{name} 이 비어 있다(예시 \"...\" 그대로) — \"계정 파일 열어줘\"로 채운다."))
+            continue
+        if prov in UNSUPPORTED:
+            out.append(CalAccount(name, prov, login, None, False, UNSUPPORTED[prov][1]))
+            continue
+        cfg = PROVIDERS[prov]
+        reason = f"칸이 모자란다: {', '.join(sec.missing)}" if sec.status != "ready" else None
+        out.append(CalAccount(name, prov, login, cfg["default_url"], reason is None, reason, pw))
+    return sorted(out, key=lambda a: a.name)
+
+
+def discover(values: dict, sections=None) -> list[CalAccount]:
+    if sections:
+        return discover_toml(sections)
     out: list[CalAccount] = []
     for prov, cfg in PROVIDERS.items():
         for s in sorted(_suffixes(values, cfg["login_key"]) | _suffixes(values, cfg["password_key"])):
@@ -119,13 +147,17 @@ def select(accounts: list[CalAccount], name: str | None) -> CalAccount:
         if len(ok) == 1:
             return ok[0]
         if not ok:
-            raise CalError("no_account", "`.env` 에 캘린더를 쓸 수 있는 계정(네이버·아이클라우드·CALDAV_URL)이 없다.",
-                           hint="GUIDE.md 의 .env 예시대로 적는다.", accounts=[a.to_public() for a in accounts])
+            raise CalError("no_account", "계정 파일에 캘린더를 쓸 수 있는 계정(네이버·아이클라우드·CALDAV_URL)이 없다.",
+                           hint="\"계정 파일 열어줘\"로 채우거나 GUIDE.md 의 예시대로 적는다.",
+                           accounts=[a.to_public() for a in accounts])
         raise CalError("account_required", "캘린더 계정이 여럿이다 — --account 로 하나를 고른다.",
                        accounts=[a.to_public() for a in ok])
-    want = name.strip().lower()
+    hits = cc_account_toml.match_names(name, [a.name for a in accounts])
+    if len(hits) > 1:
+        raise CalError("account_required", f"{name} 에 맞는 계정이 여럿이다 — --account 로 하나를 고른다.",
+                       accounts=[a.to_public() for a in accounts if a.name in hits])
     for a in accounts:
-        if a.name == want:
+        if hits and a.name == hits[0]:
             if not a.supported:
                 raise CalError("not_supported", a.reason or "이 계정은 캘린더를 쓸 수 없다.", account=a.to_public())
             return a

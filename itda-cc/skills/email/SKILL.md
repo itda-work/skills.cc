@@ -1,27 +1,27 @@
 ---
 name: email
 description: >
-  네이버·Gmail·다음/카카오·아이클라우드·회사 메일을 .env 의 앱 비밀번호로 IMAP/SMTP 에 직접 붙어 찾고 읽고 보내는 Claude Code 전용 스킬입니다.
+  네이버·Gmail·다음/카카오·아이클라우드·회사 메일을 계정 파일(계정.toml·.env)의 앱 비밀번호로 IMAP/SMTP 에 직접 붙어 찾고 읽고 보내는 Claude Code 전용 스킬입니다.
   "메일 보내줘", "받은편지함 확인해줘", "안 읽은 메일 있어?", "이 메일에 답장해줘", "첨부 받아서 요약해줘"처럼 말하면 됩니다.
   목록을 먼저 보여 주고 고른 메일만 엽니다(읽음 표시 안 바뀜). 발송은 미리보기 승인 뒤에만 합니다.
   [책임 경계] 본 스킬은 Claude Code 의 메일 찾기·읽기·발송 전담 — itda-work:email 은 Cowork·itda-hyve 경로.
 license: Apache-2.0
-compatibility: "Claude Code 전용. Python 3.10+ (표준 라이브러리만 — 설치할 패키지 없음). 계정은 .env 파일 하나에서 읽는다."
+compatibility: "Claude Code 전용. Python 3.10+ (표준 라이브러리만 — 설치할 패키지 없음). 계정은 계정 파일 하나(계정.toml 또는 .env)에서 읽는다 — 계정.toml 은 Python 3.11+."
 allowed-tools: "Bash, Read, Write"
 user-invocable: true
 argument-hint: "받은편지함 확인해줘 | 메일 보내줘 | 첨부 받아서 요약해줘"
 metadata:
   author: "스킬.잇다 <dev@itda.work>"
   category: "domain"
-  version: "0.1.0"
+  version: "0.2.0"
   created_at: "2026-11-02"
-  updated_at: "2026-11-02"
+  updated_at: "2026-11-22"
   tags: "email, imap, smtp, naver, gmail, google, daum, kakao, icloud, multi-account, dotenv, mailbox, search, unread, flagged, attachments, reply, phishing, send-confirmation, claude-code"
 ---
 
 # email (Claude Code)
 
-메일은 **이 스킬의 스크립트 `mail.py` 로만** 다룬다. 스크립트가 `.env` 의 앱 비밀번호로 IMAP(받기)·SMTP(보내기)에
+메일은 **이 스킬의 스크립트 `mail.py` 로만** 다룬다. 스크립트가 계정 파일의 앱 비밀번호로 IMAP(받기)·SMTP(보내기)에
 직접 붙는다. 다른 경로(웹메일 브라우저·내장 fetch·다른 도구)로 돌아가지 않는다.
 
 ## 준비
@@ -49,18 +49,30 @@ printf "%s\n" "$c"' _ email itda-cc "${SKILL_DIR:-}" "${CLAUDE_PLUGIN_ROOT:-}" "
 이후 명령은 모두 `python3 "$SKILL_DIR/scripts/mail.py" <하위 명령> …` 이다(Python 3.10+, 표준 라이브러리만).
 출력은 JSON 한 개다. **exit 0** 성공 · **1** 오류(`error`·`message`·`hint`) · **3** 발송 미리보기(아직 보내지 않음).
 
-### `.env` — 계정은 파일 하나에서만
+### 계정 파일 — 하나에서만
 
-스크립트는 `--env-file <경로>` → 현재 폴더 `./.env` → `~/.env` 순으로 **처음 찾은 파일 하나만** 읽는다(합치지 않는다,
-프로세스 환경변수는 보지 않는다). 출력 JSON 의 `env_file` 이 실제로 읽은 파일이고, `account`·`email` 이 쓴 계정이다.
+스크립트는 `--env-file <경로>` → 현재 폴더 → 홈 폴더 순으로 **처음 찾은 계정 파일 하나만** 읽는다(합치지 않는다,
+프로세스 환경변수는 보지 않는다). 계정 파일은 `계정.toml`(새 형식) 또는 `.env` 다. **같은 폴더에 둘 다 있으면 멈춘다**
+(`account_file_conflict` — 어느 쪽을 남길지 사용자에게 묻는다. 지우지 않는다). 출력 JSON 의 `env_file` 이 실제로 읽은 파일이다.
 
-- **`.env` 를 Read·cat·grep 으로 열지 않는다. 키·비밀번호 값을 대화에 출력하지 않는다.** 어떤 키가 있는지는
-  `accounts` 결과(이름·주소·`missing_keys`)로만 본다.
-- 사용자가 비밀번호를 대화에 붙여 넣으면 **쓰지 않는다.** "그 값은 쓰지 않았어요. `.env` 파일에 직접 적어 주세요(형식은 GUIDE.md)" 라고 안내한다.
-- `env_key_missing`·`account_incomplete` 면 출력의 파일 경로와 **없는 키 이름**을 사용자에게 알리고 멈춘다. 다른 `.env` 를 찾아 나서지 않는다.
-- 권한 경고(`chmod 600`)가 stderr 에 나오면 사용자에게 한 줄 전한다.
+- **계정 파일(`계정.toml`·`.env`)을 Read·cat·grep 으로 열지 않는다. 키·비밀번호 값을 대화에 출력하지 않는다.**
+- 사용자가 비밀번호·키를 대화에 붙여 넣으면 **쓰지 않는다.** "그 값은 쓰지 않았어요. 계정 파일에 직접 적어 주세요" 라고 하고
+  "계정 파일 열어줘"(`itda-cc:account-file`)를 권한다. 계정 파일이 없으면(`env_file_missing`) "계정 파일 만들어줘" 를 권한다.
+- `account_file_syntax`(계정 파일을 읽지 못했다)면 출력의 `lines`(줄 번호·칸 이름)를 그대로 전하고 "계정 파일 검사해줘"·"계정 파일 고쳐줘" 를 권한다.
+- 권한 경고(`chmod 600`)·건너뛴 묶음 경고가 stderr 에 나오면 사용자에게 한 줄 전한다.
+- `env_key_missing`·`account_incomplete`·`account_empty` 면 출력의 파일 경로와 **없는 칸·키 이름**을 알리고 멈춘다. 다른 계정 파일을 찾아 나서지 않는다.
 
-키 이름(발급 방법·예시는 `GUIDE.md`):
+`계정.toml` 이면 **묶음 이름이 곧 계정 이름**이다(칸은 `메일`·`앱비밀번호`, 선택 `보내는이름` — 받는 사람에게 보일 이름):
+
+| 묶음 | 계정 이름 |
+|---|---|
+| `[naver]` · `[gmail]` · `[daum]` · `[icloud]` | `naver` · `gmail` · `daum` · `icloud` |
+| `[gmail.회사]` · `[naver.개인]` | `gmail.회사` · `naver.개인` |
+
+`"..."`·빈 값은 적지 않은 것으로 본다 — 예시 그대로인 묶음은 `status: "empty"`, 일부만 채운 묶음은 `incomplete` 다.
+회사 메일(`SMTP_*`)은 `계정.toml` 에 칸이 없어 `.env` 로만 쓴다.
+
+`.env` 이면 키 이름(발급 방법·예시는 `GUIDE.md`):
 
 | 계정 이름 | 키 |
 |---|---|
@@ -80,9 +92,12 @@ python3 "$SKILL_DIR/scripts/mail.py" accounts
 
 → `accounts[]`(`name`·`provider`·`email`·`imap_host`·`smtp_host`·`status`·`missing_keys`). 비밀번호는 싣지 않는다.
 
-- 모든 하위 명령의 `--account` 는 이 `name` 이다. 주소나 제공자 이름을 짐작해 넣지 않는다. 준비된(`status: ready`) 계정이 하나뿐이면 생략해도 된다.
-- 사용자가 "naver 메일" 처럼 말하면 `name` 또는 `email` 도메인이 맞는 계정을 고른다. 맞는 것이 둘 이상이거나 없으면 목록을 보여 주고 묻는다.
-- 목록이 비었거나 전부 `incomplete` 면 `.env` 에 무엇을 적어야 하는지(`missing_keys`·GUIDE.md)를 안내하고 멈춘다.
+- 모든 하위 명령의 `--account` 는 이 `name` 이다. 주소를 짐작해 넣지 않는다. 준비된(`status: ready`) 계정이 하나뿐이면 생략해도 된다.
+- **사용자 말 → 계정 이름**: "회사 Gmail 로", "Gmail 회사 계정으로" 는 `gmail.회사` 다 — 제공자 낱말(Gmail·구글 → `gmail`, 네이버 → `naver`,
+  다음·카카오 → `daum`, 아이클라우드 → `icloud`)과 별칭(회사·개인…)을 묶음 이름에 맞춘다. 스크립트도 `--account "회사 Gmail"` 을 같은 규칙으로
+  맞추지만, 맞는 것이 둘 이상이면 `account_required` 로 멈춘다 — 그때는 목록을 보여 주고 묻는다. 없으면 `not_found`.
+- 부른 계정이 `account_empty`(예시 그대로)면 "그 묶음이 비어 있어요 — '계정 파일 열어줘' 로 채워 주세요" 라고 하고 멈춘다. 다른 계정으로 바꿔 보내지 않는다.
+- 목록이 비었거나 전부 `empty`·`incomplete` 면(`no_account`) 무엇을 채워야 하는지(`missing_keys`)를 안내하고 멈춘다.
 
 ## 계약 1 — 메타 먼저, 본문은 지목된 것만
 
@@ -222,7 +237,8 @@ python3 "$SKILL_DIR/scripts/mail.py" read --account naver --mailbox INBOX --uid 
 
 | 상황 | 대응 |
 |---|---|
-| `env_file_missing` · `env_key_missing` · `account_incomplete` · `no_account` | 출력의 파일 경로·없는 키 이름을 알리고 GUIDE.md 의 `.env` 형식을 안내한 뒤 멈춤 |
+| `env_file_missing` · `env_key_missing` · `account_incomplete` · `account_empty` · `no_account` | 출력의 파일 경로·없는 칸·키 이름을 알리고 "계정 파일 열어줘"(없으면 "만들어줘")를 권한 뒤 멈춤 |
+| `account_file_syntax` · `account_file_conflict` · `account_file_python` | `lines`(줄 번호·칸 이름)·`files` 를 그대로 전하고 멈춤 — "계정 파일 검사해줘" 를 권한다 |
 | `account_required` | 출력의 `accounts[]` 를 보여 주고 어느 계정인지 묻는다 |
 | `auth_error` | 앱 비밀번호가 틀렸거나 IMAP 이 꺼져 있다. GUIDE.md 의 해당 제공자 절(앱 비밀번호 재발급·IMAP 켜기)을 안내 |
 | `not_found` | uid·메일함이 없다, 또는 그 메일에 첨부가 없다. `search` 를 다시 하거나 `mailboxes` 로 이름 확인 |

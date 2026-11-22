@@ -1,5 +1,9 @@
 # Changelog — dart (itda-cc)
 
+## 0.3.1 (2026-11-22)
+
+- 키를 계정 파일 `계정.toml` 의 `[dart] 키` 에서도 읽는다(itda-work/skills#83). `"..."` 그대로면 `env_key_missing`. `.env` 의 `DART_API_KEY` 는 그대로 된다.
+
 ## 0.3.0 (2026-11-03)
 
 - **설치할 패키지가 없다** — 표준 라이브러리만 쓴다. `defusedxml` 은 `xml.etree` + DTD 거부로, Windows 의 `tzdata` 는 한국 표준시

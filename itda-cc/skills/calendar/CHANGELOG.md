@@ -1,5 +1,11 @@
 # Changelog — itda-cc:calendar
 
+## 0.2.0 (2026-11-22)
+
+- 계정 파일 `계정.toml` 을 읽는다(itda-work/skills#83). 메일 묶음이 곧 캘린더 계정이다(`[naver.회사]` → `naver.회사`, CalDAV 주소 자동).
+  Gmail·다음 묶음과 예시 그대로인 묶음은 `supported: false`. 직접 입력 CalDAV(`CALDAV_URL`)는 `.env` 로만 쓴다.
+- `--account` 가 `회사 네이버` 같은 말도 낱말로 맞춘다.
+
 ## 0.1.1 (2026-11-03)
 
 - Windows 에서 `tzdata` 패키지가 없으면 `ical_min` import 부터 `ZoneInfoNotFoundError` 로 죽던 것을 고쳤다 — 서울 시간대를
