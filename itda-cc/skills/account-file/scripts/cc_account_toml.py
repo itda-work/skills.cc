@@ -30,6 +30,7 @@
 """
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -718,6 +719,168 @@ TEMPLATE = """\
 [ecos]
 키 = "..."
 """
+
+# ---------------------------------------------------------------- 새 파일 틀 채우기(itda-work/skills#84)
+
+class FillError(Exception):
+    """틀 채우기 입력이 맞지 않는다 — 문구에 입력값을 싣지 않는다. code: invalid_provider | invalid."""
+
+    def __init__(self, code: str, message: str, field: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.field = field
+
+
+MAIL_PROVIDERS = tuple(p for p, k in PROVIDERS.items() if k == "mail")
+_ALIAS = re.compile(r"[a-z0-9가-힣]+\Z")
+_EXAMPLE_MARK = "# ── 아래는 예시입니다."
+
+
+def mail_target(spec: str) -> tuple[str, str | None]:
+    """`naver`·`gmail.회사`·`google.개인` → (제공자, 별칭). 메일 제공자만, 별칭은 영문 소문자·숫자·한글 음절 한 단어."""
+    s = nfc(spec or "")
+    head, dot, tail = s.partition(".")
+    prov = canonical_provider(head) if head.strip() == head else ""
+    if PROVIDERS.get(prov) != "mail":
+        raise FillError("invalid_provider",
+                        f"메일 제공자가 아니다 — {'·'.join(MAIL_PROVIDERS)}(google 은 gmail) 중 하나만 채울 수 있다.")
+    if not dot:
+        return prov, None
+    if not _ALIAS.match(tail):
+        raise FillError("invalid_provider", "별칭(점 뒤 이름)은 영문 소문자·숫자·한글로 된 한 단어여야 한다(예: gmail.회사).")
+    return prov, tail
+
+
+def _bad_char(ch: str) -> bool:
+    return unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp")
+
+
+def check_email(v: str) -> str:
+    """메일 주소 한 줄 검사 — 통과하면 그 값, 아니면 FillError(invalid). 값은 문구에 싣지 않는다."""
+    s = nfc(v or "")
+    bad = (not s or s.count("@") != 1 or any(ch.isspace() or ch in "\"'\\`" or _bad_char(ch) for ch in s)
+           or ".." in s or "…" in s)
+    if not bad:
+        local, _, domain = s.partition("@")
+        bad = not local or not domain or is_placeholder(local) or is_placeholder(domain)
+    if bad:
+        raise FillError("invalid", "메일 주소 꼴이 아니다 — @ 하나와 양쪽 글자만, 공백·따옴표·역슬래시·제어문자 없이 적는다.",
+                        field=LABEL["email"])
+    return s
+
+
+def check_sender_name(v: str) -> str:
+    """보내는이름 검사 — 안쪽 공백·따옴표는 받고, 줄바꿈·제어문자·자리표시는 받지 않는다. 앞뒤 공백은 지운다."""
+    s = (v or "").strip()
+    if not s or is_placeholder(s) or any(_bad_char(ch) for ch in s):
+        raise FillError("invalid", "보내는이름은 한 줄로 적는다 — 줄바꿈·제어문자·\"...\" 는 받지 않는다.",
+                        field=LABEL["sender_name"])
+    return s
+
+
+def _lines(text: str) -> list[str]:
+    return text.splitlines(keepends=True)
+
+
+def _replace_placeholder(raw: str, encoded: str) -> str:
+    eq = _find_outside_quotes(raw, "=")
+    return raw[:eq + 1] + raw[eq + 1:].replace('"..."', encoded, 1)
+
+
+def fill_template(provider: str, alias: str | None, email: str, sender_name: str | None = None,
+                  template: str = TEMPLATE) -> tuple[str, list[str]]:
+    """새 계정 파일 글 — 틀에서 그 묶음의 `메일`(선택 `보내는이름`)만 채운다. 나머지 바이트는 그대로.
+
+    틀에 없는 묶음은 `[naver]` 묶음 뒤·예시 구역 위에 새로 붙인다. 채운 글을 다시 읽어 그 묶음 값이 입력과 같은지,
+    바뀐 줄이 그 묶음 안뿐인지 대조한다(어긋나면 FillError). (글, 채운 칸 이름들).
+    """
+    email = check_email(email)
+    sender_name = check_sender_name(sender_name) if sender_name is not None else None
+    want = (provider,) + ((alias,) if alias else ())
+    name = ".".join(want)
+    filled = [LABEL["email"]] + ([LABEL["sender_name"]] if sender_name is not None else [])
+    scanned = _scan(template)
+    out = _lines(template)
+    in_target = [ln for ln in scanned if ln.section == want and ln.kind != "header"]
+    has_header = any(ln.kind == "header" and ln.section == want for ln in scanned)
+    if has_header:
+        inserts: dict[int, str] = {}
+        seen = set()
+        for ln in in_target:
+            if ln.kind != "kv":
+                continue
+            f = canonical_field(ln.key or "")
+            if f == "email":
+                out[ln.no - 1] = _replace_placeholder(ln.raw, _basic(email)) + ln.end
+                seen.add(f)
+            elif f == "sender_name" and sender_name is not None:
+                out[ln.no - 1] = _replace_placeholder(ln.raw, _basic(sender_name)) + ln.end
+                seen.add(f)
+        if sender_name is not None and "sender_name" not in seen:
+            pw = [ln for ln in in_target if ln.kind == "kv" and canonical_field(ln.key or "") == "password"]
+            anchor = pw[-1] if pw else max((ln for ln in in_target if ln.kind == "kv"), key=lambda ln: ln.no)
+            inserts[anchor.no] = f"{LABEL['sender_name']} = {_basic(sender_name)}{anchor.end or chr(10)}"
+        for no in sorted(inserts, reverse=True):
+            out.insert(no, inserts[no])
+        if "email" not in seen:
+            raise FillError("invalid", "틀에서 메일 칸을 찾지 못했다.", field=LABEL["email"])
+    else:
+        block = [f"[{name}]\n", f"{LABEL['email']} = {_basic(email)}\n", f'{LABEL["password"]} = "..."\n']
+        if sender_name is not None:
+            block.append(f"{LABEL['sender_name']} = {_basic(sender_name)}\n")
+        block.append("\n")
+        mark = [ln for ln in scanned if ln.kind == "comment" and ln.raw.startswith(_EXAMPLE_MARK)]
+        at = mark[0].no - 1 if mark else len(out)
+        if not mark and out and not out[-1].endswith("\n"):
+            out[-1] += "\n"
+        out[at:at] = block
+    text = "".join(out)
+    _verify_fill(template, text, want, email, sender_name)
+    return text, filled
+
+
+def _only_target_changed(template: str, text: str, want: tuple[str, ...]) -> bool:
+    """틀과 완성본의 차이가 그 묶음 안뿐인가 — 있던 묶음은 칸 줄을 바꾸거나 더한 것만, 새 묶음은 통째로 끼운 한 덩어리만."""
+    a, b = _lines(template), _lines(text)
+    scanned = _scan(text)
+    headers = [ln.no - 1 for ln in scanned if ln.kind == "header" and ln.section == want]
+    if len(headers) != 1:
+        return False
+    if not any(ln.kind == "header" and ln.section == want for ln in _scan(template)):
+        # 새 묶음: 머리줄부터 첫 빈 줄까지를 빼면 틀과 바이트 동일, 그 안은 머리·칸 줄뿐
+        start = headers[0]
+        end = next((j for j in range(start + 1, len(b)) if scanned[j].kind == "blank"), len(b) - 1)
+        block = scanned[start + 1:end]
+        if not block or any(ln.kind != "kv" or ln.section != want or canonical_field(ln.key or "") is None
+                            for ln in block):
+            return False
+        return b[:start] + b[end + 1:] == a
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        if op == "delete" or (op == "replace" and i2 - i1 != j2 - j1):
+            return False
+        for j in range(j1, j2):
+            ln = scanned[j]
+            if not (ln.kind == "kv" and ln.section == want
+                    and canonical_field(ln.key or "") in ("email", "sender_name")):
+                return False
+    return True
+
+
+def _verify_fill(template: str, text: str, want: tuple[str, ...], email: str, sender_name: str | None) -> None:
+    errors = [i for i in lint(text) if i.level == "error"]
+    sections, _ = parse(text)  # TomlUnavailable·AccountSyntaxError 는 호출자가 받는다
+    hit = [s for s in sections if (s.provider,) + ((s.alias,) if s.alias else ()) == want]
+    ok = (not errors and len(hit) == 1 and hit[0].fields.get("email") == email
+          and hit[0].fields.get("sender_name") == sender_name
+          and hit[0].get("password") is None)
+
+    if ok:
+        ok = _only_target_changed(template, text, want)
+    if not ok:
+        raise FillError("invalid", "채운 글을 다시 읽으니 넣은 값과 맞지 않아 쓰지 않았다.")
+
 
 # .env 키 → (제공자, 칸). 접미(_WORK)는 별칭이 된다.
 ENV_MAP = {

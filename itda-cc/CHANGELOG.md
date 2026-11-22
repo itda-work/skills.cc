@@ -1,5 +1,18 @@
 # Changelog — itda-cc
 
+## [0.4.1] - 2026-11-22
+
+### Added
+
+- `account-file` 0.2.0 — `create --provider naver --email me@naver.com --open` 이 새 계정 파일의 메일 칸을 미리 채운다(itda-work/skills#84).
+  수강생이 메모장에서 고칠 칸은 `앱비밀번호` 하나가 된다. 비밀 칸은 받지 않고 주소도 출력하지 않는다. 이미 파일이 있으면 아무것도 쓰지 않는다.
+
+### Changed
+
+- `account-file create` 가 현재 폴더 → 홈 순으로 계정 파일을 찾고, 어디에도 없을 때만 홈에 만든다. `.env` 만 있으면 `status: env_exists`(exit 0),
+  한 폴더에 둘 다 있으면 `account_file_conflict`. 인자 오류는 JSON `invalid_args`(exit 1)로 낸다.
+- 공용 `shared/cc_account_toml.py` 에 틀 채우기 도우미(`mail_target`·`check_email`·`check_sender_name`·`fill_template`).
+
 ## [0.4.0] - 2026-11-22
 
 ### Added
