@@ -6,7 +6,7 @@ itda-hyve 를 설치하지 않아도 됩니다. Cowork 에서는 이 팩 대신 
 | 스킬 | 하는 일 | 계정 파일 묶음 (`.env` 키) |
 |---|---|---|
 | `account-file` | 계정 파일 만들기·열기·검사·고치기·`.env` 에서 옮기기 | 필요 없음 |
-| `email` | 메일 찾기·읽기·첨부 저장·발송(미리보기 승인 뒤) | `[naver]`·`[gmail.회사]` 등 (`NAVER_EMAIL`·`NAVER_APP_PASSWORD` 등) |
+| `email` | 메일 찾기·읽기·첨부 저장·발송·답장·전달·임시보관함·정리(옮기기·휴지통·폴더)·미회신 찾기 | `[naver]`·`[gmail.회사]` 등 (`NAVER_EMAIL`·`NAVER_APP_PASSWORD` 등) |
 | `calendar` | 네이버·iCloud·CalDAV 일정 조회·추가·수정·삭제 | 메일 계정 묶음 (직접 입력 CalDAV 는 `.env` 만) |
 | `dart` | DART 전자공시 기업 정보·재무·공시 | `[dart] 키` (`DART_API_KEY`) |
 | `ecos` | 한국은행 ECOS 경제통계 | `[ecos] 키` (`ECOS_API_KEY`) |

@@ -1,5 +1,33 @@
 # Changelog — itda-cc:email
 
+## 0.3.0 (2026-11-24)
+
+- **임시보관함** — `draft`(받는 사람·제목·본문 없이도 저장, `--replace-uid` 로 고쳐 저장)와 `send-draft`(2단계, 토큰은 임시본 내용 해시·UIDVALIDITY 에 묶임, 보낸 뒤 임시본 삭제 — `--keep-draft`).
+- **답장·전달** — `send --reply-uid`(원본에서 `In-Reply-To`·`References`, 보낸 뒤 원본에 `\Answered`, `--quote` 인용)와 `--forward-uid`(전달 머리·원본 본문·첨부, 실행형 첨부는 빼고 `forward_skipped`).
+- **보낸메일함 사본** — `--save-sent auto|yes|no`. `auto` 는 서버 사본을 Message-ID 로 확인하고 없을 때만 APPEND(Gmail 은 확인 생략). 결과 `sent_copy`. 보낸 뒤 처리가 실패해도 `status: sent` 를 유지한다.
+- 받는 사람·참조·숨은참조에 겹친 주소는 한 번만 보낸다.
+- **정리** — `flag`(읽음·별표·답장 표시), `move`(MOVE, 없으면 COPY → 그 uid 만 `UID EXPUNGE`), `delete`(휴지통·스팸함 안에서만, 2단계),
+  `mailbox-create`·`mailbox-rename`·`mailbox-delete`(특수 폴더·`[Gmail]` 보호, 하위 폴더 있는 폴더 거부, 지우기는 2단계 — Gmail 은 라벨만 지워진다고 미리보기에 알림).
+- **맥락** — `unreplied`(답장 표시·보낸메일함 참조 대조, 내 메일·대량 메일 제외)와 `thread`(Gmail 은 `X-GM-THRID`, 그 밖은 Message-ID + 제목 후보 대조. 인용 걷어 낸 새 글만).
+- 배포 전 리뷰에서 고친 것: 텍스트·HTML 본문을 함께 주면 전달 원문·인용이 HTML 판에서 빠지던 것(이제 둘 다에 붙는다),
+  서버가 휴지통·스팸함을 표시해 주는데도 `업무/휴지통` 같은 사용자 폴더를 이름만으로 휴지통으로 보고 영구 삭제를 열던 것
+  (이름 후보는 서버 표시가 없을 때만), `draft --replace-uid` 가 새 임시본을 넣고 옛 것을 못 지우면 오류만 내던 것
+  (이제 `status: saved` + `replace_failed_uid`·`replace_error`).
+- IMAP 서버 거부는 `imap_error`, 소켓 시간 초과는 `timeout` 으로 낸다.
+- 라이브 실측(2026-11-24, 네이버·Gmail 자기 계정 사이): 첨부 바이트 동일·DKIM/SPF 통과, 두 서버 모두 보낸메일함에 스스로 사본을 둔다,
+  네이버 폴더 지우기는 안의 메일도 지우고 Gmail 은 라벨만 지운다, Gmail `HEADER In-Reply-To` 검색은 8.8만 통에서 92초라 `thread` 가 쓰지 않는다.
+
+## 0.2.1 (2026-11-24, 배포하지 않음 — 0.3.0 에 함께 나간다)
+
+- 받는 주소(`--to`·`--cc`·`--bcc`) 형식 검사를 보강했다. 옛 판은 `@` 가 있는지만 봤고, `getaddresses` 가 읽지 못한 항목(`kim@`·`x@@y`)은
+  조용히 빼서 `a@b.com, kim@` 이 `a@b.com` 에게만 가는 미리보기를 냈다. 이제 읽지 못하거나 형식이 틀린 항목이 하나라도 있으면
+  `invalid_input` 으로 멈추고 `message` 에 사유와 그 항목을, `hint` 에 적는 꼴을 싣는다.
+- 거부하는 꼴: `@` 없음·둘 이상, 로컬 부분의 공백·따옴표·앞뒤/연속 점, 점 없는 도메인(`a@b`), 빈·하이픈 끝 레이블, 숫자 든 끝 도메인,
+  한글 주소(한글 도메인은 `xn--` 꼴로), `<>`·따옴표 짝 불일치, 줄바꿈, `이름 <주소> 덧말`.
+- 쉼표 외에 세미콜론으로도 가른다(따옴표·`<>` 안은 가르지 않는다). 끝 쉼표는 무시한다.
+- 이름에 쉼표·점 같은 특수 글자가 있으면 따옴표로 감싼다 — 옛 판은 `"Kim, M" <a@b.com>` 을 `Kim, M <a@b.com>` 으로 다시 써서
+  To 머리줄이 두 주소로 갈렸다.
+
 ## 0.2.0 (2026-11-22)
 
 - 계정 파일 `계정.toml` 을 읽는다(itda-work/skills#83). 묶음 이름이 곧 계정 이름이다(`[naver]` → `naver`, `[gmail.회사]` → `gmail.회사`).

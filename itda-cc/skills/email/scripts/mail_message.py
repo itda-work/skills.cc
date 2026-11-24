@@ -268,15 +268,89 @@ def save_attachments(raw: bytes, save_dir: Path, *, parts: list[str] | None = No
 
 # ---------------------------------------------------------------- 발송 조립·확인 토큰
 
+_ADDR_HINT = '"kim@example.com" 또는 "김민수 <kim@example.com>" 꼴로 적는다. 여럿이면 쉼표로 가르거나 옵션을 반복한다.'
+# 로컬 부분: RFC 5322 dot-atom 글자(ASCII). 따옴표 로컬 부분("a b"@x)은 받지 않는다.
+_LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*")
+_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_TLD_RE = re.compile(r"[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59}")
+
+
+def address_problem(addr: str) -> str | None:
+    """받는 주소 한 개의 형식 문제를 한 문장으로. 문제가 없으면 None."""
+    if not addr:
+        return "주소가 비었다"
+    if "@" not in addr:
+        return "@ 가 없다"
+    if addr.count("@") != 1:
+        return "@ 가 정확히 하나여야 한다"
+    if not addr.isascii():
+        return "영문·숫자 주소만 보낼 수 있다(한글 도메인은 xn-- 꼴로 적는다)"
+    local, _, domain = addr.partition("@")
+    if not local or not domain:
+        return "@ 앞뒤에 글자가 있어야 한다"
+    if len(addr) > 254 or len(local) > 64:
+        return "주소가 너무 길다"
+    if not _LOCAL_RE.fullmatch(local):
+        return "@ 앞에 공백·따옴표·괄호·연속 점 같은 쓸 수 없는 글자가 있다"
+    labels = domain.split(".")
+    if len(labels) < 2:
+        return "도메인에 점이 있어야 한다(예: example.com)"
+    if not all(_LABEL_RE.fullmatch(lb) for lb in labels):
+        return "도메인 형식이 아니다(빈 칸·연속 점·쓸 수 없는 글자)"
+    if not _TLD_RE.fullmatch(labels[-1]):
+        return "도메인 끝(.com·.kr 등)이 형식에 맞지 않는다"
+    return None
+
+
+def _format(disp: str, addr: str) -> str:
+    """`이름 <주소>` — 이름에 쉼표·따옴표 같은 특수 글자가 있으면 따옴표로 감싸 To 머리줄에서 둘로 갈리지 않게 한다."""
+    if not disp:
+        return addr
+    if re.search(r'[()<>@,;:\\".\[\]]', disp):
+        disp = '"' + disp.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return f"{disp} <{addr}>"
+
+
+def _split_chunks(value: str, what: str) -> list[str]:
+    """쉼표·세미콜론으로 가른다 — 따옴표 안과 <> 안의 구분자는 가르지 않는다."""
+    chunks, cur, quoted, angle, esc = [], [], False, 0, False
+    for ch in value:
+        if esc:
+            cur.append(ch); esc = False; continue
+        if ch == "\\" and quoted:
+            cur.append(ch); esc = True; continue
+        if ch == '"':
+            quoted = not quoted
+        elif not quoted and ch == "<":
+            angle += 1
+        elif not quoted and ch == ">":
+            angle -= 1
+            if angle < 0:
+                break
+        elif not quoted and not angle and ch in ",;":
+            chunks.append("".join(cur)); cur = []; continue
+        cur.append(ch)
+    if quoted or angle:
+        raise MailError("invalid_input", f"{what} 의 따옴표·<> 짝이 맞지 않는다: {value}", hint=_ADDR_HINT)
+    chunks.append("".join(cur))
+    return [c.strip() for c in chunks if c.strip()]
+
+
 def split_addresses(values: list[str] | None, what: str) -> list[str]:
+    """--to·--cc·--bcc 값을 주소 목록으로. 읽지 못하거나 형식이 틀린 항목이 하나라도 있으면 invalid_input — 조용히 빼지 않는다."""
     out = []
     for v in values or []:
-        for disp, addr in getaddresses([v]):
-            if not addr:
-                continue
-            if "@" not in addr or addr.startswith("@") or addr.endswith("@"):
-                raise MailError("invalid_input", f"{what} 주소 형식이 아니다: {addr}")
-            out.append(f"{disp} <{addr}>" if disp else addr)
+        if any(ch in "\r\n" for ch in v):
+            raise MailError("invalid_input", f"{what} 에 줄바꿈이 있다.", hint=_ADDR_HINT)
+        for chunk in _split_chunks(v, what):
+            parsed = getaddresses([chunk])
+            disp, addr = parsed[0] if len(parsed) == 1 else ("", "")
+            problem = address_problem(addr) if addr else "주소로 읽을 수 없다"
+            if problem is None and "<" in chunk and "<" + addr + ">" not in chunk:
+                problem = "주소로 읽을 수 없다"  # "이름 <a@b.com> 덧말" 류 — 해석이 입력과 어긋남
+            if problem:
+                raise MailError("invalid_input", f"{what} 주소 형식이 아니다({problem}): {chunk}", hint=_ADDR_HINT)
+            out.append(_format(disp, addr))
     return out
 
 
@@ -300,7 +374,8 @@ def make_token(payload: dict, now: int | None = None) -> str:
     return f"{iat}-{digest}"
 
 
-def check_token(token: str, payload: dict, now: int | None = None) -> None:
+def check_token(token: str, payload: dict, now: int | None = None,
+                changed: str = "미리보기 뒤 내용(받는 사람·제목·본문·첨부 중 하나)이 바뀌었다.") -> None:
     """토큰이 이 내용·10분 안에 만든 것인지. 아니면 MailError(confirm_invalid)."""
     now = int(time.time() if now is None else now)
     m = re.fullmatch(r"(\d{9,12})-([0-9a-f]{32})", (token or "").strip())
@@ -311,18 +386,22 @@ def check_token(token: str, payload: dict, now: int | None = None) -> None:
         raise MailError("confirm_invalid", "확인 토큰이 만료됐다(10분).", hint="미리보기부터 다시 받아 사용자 승인을 다시 얻는다.")
     want = hashlib.sha256(f"{iat}|{canonical(payload)}".encode("utf-8")).hexdigest()[:32]
     if want != m.group(2):
-        raise MailError("confirm_invalid", "미리보기 뒤 내용(받는 사람·제목·본문·첨부 중 하나)이 바뀌었다.",
+        raise MailError("confirm_invalid", changed,
                         hint="바뀐 내용으로 미리보기를 다시 받아 사용자에게 보여 준다.")
 
 
 def build_message(*, sender: str, to: list[str], cc: list[str], subject: str, body_text: str | None,
                   body_html: str | None, attachments: list[dict], in_reply_to: str | None,
-                  references: str | None) -> EmailMessage:
+                  references: str | None, bcc: list[str] | None = None) -> EmailMessage:
+    """보낼 메일. bcc 를 주면 Bcc 머리줄을 싣는다 — 임시보관함·보낸메일함 사본 전용(SMTP 로 나가는 판에는 주지 않는다)."""
     msg = EmailMessage()
     msg["From"] = sender
-    msg["To"] = ", ".join(to)
+    if to:
+        msg["To"] = ", ".join(to)
     if cc:
         msg["Cc"] = ", ".join(cc)
+    if bcc:
+        msg["Bcc"] = ", ".join(bcc)
     msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
     domain = sender.rsplit("@", 1)[-1].strip("> ") or None
@@ -342,7 +421,68 @@ def build_message(*, sender: str, to: list[str], cc: list[str], subject: str, bo
     elif body_html is not None:
         msg.set_content(body_html, subtype="html")
     for a in attachments:
-        ctype = mimetypes.guess_type(a["filename"])[0] or "application/octet-stream"
+        ctype = a.get("content_type") or mimetypes.guess_type(a["filename"])[0] or "application/octet-stream"
         maintype, subtype = ctype.split("/", 1)
-        msg.add_attachment(a["_data"], maintype=maintype, subtype=subtype, filename=a["filename"])
+        if maintype == "message" and subtype == "rfc822":
+            msg.add_attachment(parse(a["_data"]), filename=a["filename"])
+        else:
+            msg.add_attachment(a["_data"], maintype=maintype, subtype=subtype, filename=a["filename"])
     return msg
+
+
+# ---------------------------------------------------------------- 답장·전달 원본
+
+def source_summary(raw: bytes) -> dict:
+    """답장·전달에 쓰는 원본 요약 — 머리줄·본문 텍스트·첨부(바이트 포함)."""
+    msg = parse(raw)
+    summ = read_summary(raw, max_body_chars=10 ** 9)
+    try:
+        body = msg.get_body(preferencelist=("plain", "html"))
+    except Exception:  # noqa: BLE001
+        body = None
+    atts, skipped = [], []
+    for num, part in attachment_parts(msg, body):
+        name = part_filename(num, part)
+        data = part_bytes(part)
+        ext = os.path.splitext(name)[1].lower()
+        if ext in BLOCKED_EXT:
+            skipped.append({"part": num, "filename": name, "reason": f"실행·스크립트 형식({ext})이라 전달하지 않는다."})
+            continue
+        atts.append({"filename": sanitize_filename(name, f"attachment-{num}"), "size": len(data),
+                     "sha256": hashlib.sha256(data).hexdigest(), "content_type": part.get_content_type(),
+                     "source_part": num, "_data": data})
+    summ["sha256"] = hashlib.sha256(raw).hexdigest()
+    summ["_attachments"] = atts
+    summ["forward_skipped"] = skipped
+    return summ
+
+
+def forward_block(src: dict) -> str:
+    """전달 본문 머리 — 원본의 보낸 사람·날짜·제목·받는 사람과 본문."""
+    lines = ["", "", "---------- 전달된 메일 ----------",
+             f"보낸 사람: {', '.join(src['from'])}", f"날짜: {src['date'] or ''}", f"제목: {src['subject']}",
+             f"받는 사람: {', '.join(src['to'])}"]
+    if src["cc"]:
+        lines.append(f"참조: {', '.join(src['cc'])}")
+    return "\n".join(lines) + "\n\n" + (src["text"] or "")
+
+
+def quote_block(src: dict) -> str:
+    """답장 본문 밑에 붙이는 인용 — `날짜, 보낸 사람 작성:` + `> ` 줄."""
+    head = f"{src['date'] or ''}, {', '.join(src['from'])} 작성:"
+    body = "\n".join("> " + ln if ln else ">" for ln in (src["text"] or "").splitlines())
+    return "\n\n" + head + "\n" + body
+
+
+def strip_quoted(text: str) -> str:
+    """스레드 요약용 — `>` 인용 줄과 `… 작성:`/`wrote:` 뒤를 걷어 낸다."""
+    out = []
+    for ln in (text or "").splitlines():
+        s = ln.strip()
+        if s.startswith(">"):
+            continue
+        if re.search(r"(작성:|wrote:)\s*$", s) or s.startswith("---------- 전달된 메일") \
+                or s.startswith("-----Original Message-----"):
+            break
+        out.append(ln)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()

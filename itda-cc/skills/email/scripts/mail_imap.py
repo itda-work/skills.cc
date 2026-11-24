@@ -1,6 +1,7 @@
-"""mail_imap — IMAP 읽기 전용 경로(메일함 목록·검색·한 통 가져오기).
+"""mail_imap — IMAP 경로(메일함 목록·검색·한 통 가져오기 + 표시·이동·삭제·APPEND·폴더 관리).
 
-- 메일함은 `EXAMINE`(readonly) 으로 열고 본문은 `BODY.PEEK` 로만 받는다 — 읽음 표시가 바뀌지 않는다.
+- 읽기는 `EXAMINE`(readonly) 으로 열고 본문은 `BODY.PEEK` 로만 받는다 — 읽음 표시가 바뀌지 않는다.
+- 쓰기는 `open_rw`(SELECT) 로 연 메일함에서만 한다. 지우기는 UIDPLUS `UID EXPUNGE` 로 고른 uid 만 — 맨 EXPUNGE 는 쓰지 않는다.
 - 접속은 `IMAP_FACTORY` 를 거친다(테스트가 가짜로 바꾼다).
 """
 from __future__ import annotations
@@ -11,6 +12,7 @@ import imaplib
 import re
 import socket
 import ssl
+import time
 from datetime import date
 
 from mail_accounts import Account, MailError
@@ -220,6 +222,146 @@ class Session:
         typ, data = self.conn.uid("FETCH", ",".join(str(u) for u in uids), items)
         self._ok(typ, data, "FETCH")
         return parse_fetch(data)
+
+    # ------------------------------------------------------------ 쓰기(메일함 상태를 바꾼다)
+
+    def capabilities(self) -> set[str]:
+        caps = getattr(self.conn, "capabilities", None) or ()
+        return {str(c).upper() for c in caps}
+
+    def open_rw(self, box: dict) -> None:
+        """쓰기 모드(SELECT)로 연다 — 플래그·이동·삭제 전용. 읽기는 examine 을 쓴다."""
+        typ, data = self.conn.select(quote(box["raw_name"]), readonly=False)
+        if typ != "OK":
+            raise MailError("not_found", f"메일함 {box['name']} 을 열지 못했다.", hint="mailboxes 로 이름을 확인하라.")
+
+    def uidvalidity(self) -> int | None:
+        """방금 연 메일함의 UIDVALIDITY — uid 가 같은 메일을 가리키는지 확인 토큰에 묶는다."""
+        try:
+            _, data = self.conn.response("UIDVALIDITY")
+        except Exception:  # noqa: BLE001
+            return None
+        for d in data or []:
+            if isinstance(d, bytes) and d.strip().isdigit():
+                return int(d.strip())
+        return None
+
+    def existing_uids(self, uids: list[int]) -> list[int]:
+        if not uids:
+            return []
+        typ, data = self.conn.uid("SEARCH", "UID", ",".join(str(u) for u in uids))
+        self._ok(typ, data, "SEARCH")
+        found = set()
+        for chunk in data:
+            if isinstance(chunk, bytes):
+                found.update(int(x) for x in chunk.split() if x.isdigit())
+        return [u for u in uids if u in found]
+
+    def uid_store(self, uids: list[int], op: str, flags: list[str]) -> None:
+        """op 는 '+FLAGS.SILENT' 또는 '-FLAGS.SILENT'. 바뀐 뒤 플래그는 uid_fetch 로 다시 읽는다(서버마다 응답 꼴이 다르다)."""
+        typ, data = self.conn.uid("STORE", ",".join(str(u) for u in uids), op, "(" + " ".join(flags) + ")")
+        self._ok(typ, data, "STORE")
+
+    def _uid_expunge(self, uids: list[int]) -> None:
+        """그 uid 만 지운다(UIDPLUS `UID EXPUNGE`). 맨 EXPUNGE 는 다른 \\Deleted 메일까지 지우므로 쓰지 않는다."""
+        if "UIDPLUS" not in self.capabilities():
+            raise MailError("not_supported", "서버가 UIDPLUS 를 지원하지 않아 고른 메일만 지울 수 없다.",
+                            hint="웹메일에서 직접 처리한다.")
+        typ, data = self.conn.uid("EXPUNGE", ",".join(str(u) for u in uids))
+        self._ok(typ, data, "UID EXPUNGE")
+
+    def uid_move(self, uids: list[int], target: dict) -> dict:
+        """target 메일함으로 옮긴다. MOVE 가 있으면 MOVE, 없으면 COPY → \\Deleted → UID EXPUNGE(그 uid 만)."""
+        dest = quote(target["raw_name"])
+        seq = ",".join(str(u) for u in uids)
+        if "MOVE" in self.capabilities():
+            typ, data = self.conn.uid("MOVE", seq, dest)
+            self._ok(typ, data, "MOVE")
+            return {"method": "move", "new_uids": copyuid_map(data, self.conn)}
+        if "UIDPLUS" not in self.capabilities():
+            raise MailError("not_supported", "서버가 MOVE·UIDPLUS 를 지원하지 않아 고른 메일만 옮길 수 없다.",
+                            hint="웹메일에서 직접 옮긴다.")
+        typ, data = self.conn.uid("COPY", seq, dest)
+        self._ok(typ, data, "COPY")
+        new = copyuid_map(data, self.conn)
+        self.uid_store(uids, "+FLAGS.SILENT", ["\\Deleted"])
+        self._uid_expunge(uids)
+        return {"method": "copy_expunge", "new_uids": new}
+
+    def uid_delete(self, uids: list[int]) -> None:
+        """영구 삭제 — \\Deleted 를 붙이고 그 uid 만 지운다."""
+        self.uid_store(uids, "+FLAGS.SILENT", ["\\Deleted"])
+        self._uid_expunge(uids)
+
+    def append(self, box: dict, raw: bytes, flags: list[str]) -> int | None:
+        """메일함에 한 통을 넣는다. 반환: 새 uid(APPENDUID 를 주는 서버만)."""
+        typ, data = self.conn.append(quote(box["raw_name"]), "(" + " ".join(flags) + ")", time.time(), raw)
+        self._ok(typ, data, "APPEND")
+        texts = [x for x in data if isinstance(x, bytes)]
+        try:  # 태그 응답의 [APPENDUID v uid] 는 imaplib 가 'APPENDUID' 응답으로도 남긴다
+            _, extra = self.conn.response("APPENDUID")
+            texts += [b"APPENDUID " + x for x in extra or [] if isinstance(x, bytes)]
+        except Exception:  # noqa: BLE001
+            pass
+        for t in texts:
+            m = re.search(rb"APPENDUID \d+ (\d+)", t)
+            if m:
+                return int(m.group(1))
+        return None
+
+    def search_header(self, name: str, value: str) -> list[int]:
+        """`UID SEARCH HEADER <name> <value>` — Message-ID 처럼 ASCII 값 전용."""
+        if not value.isascii():
+            return []
+        return self.uid_search(["HEADER", name, quote(value)], None)
+
+    def create_mailbox(self, name: str) -> None:
+        typ, data = self.conn.create(quote(encode_utf7(name)))
+        self._ok(typ, data, "CREATE")
+
+    def rename_mailbox(self, old_raw: str, new_name: str) -> None:
+        typ, data = self.conn.rename(quote(old_raw), quote(encode_utf7(new_name)))
+        self._ok(typ, data, "RENAME")
+
+    def delete_mailbox(self, raw: str) -> None:
+        typ, data = self.conn.delete(quote(raw))
+        self._ok(typ, data, "DELETE")
+
+    def find_box(self, name: str) -> dict | None:
+        """이름(표시 이름 그대로)으로 LIST 에서 찾는다. 대소문자는 INBOX 만 무시한다."""
+        for b in self.list_mailboxes():
+            if b["name"] == name or (name.upper() == "INBOX" and b["name"].upper() == "INBOX"):
+                return b
+        return None
+
+
+def copyuid_map(data: list, conn=None) -> dict[int, int]:
+    """COPYUID 응답(RFC 4315)에서 옛 uid → 새 uid. MOVE 는 태그 없는 OK 로 오기도 해 conn 응답도 본다."""
+    texts = [x for x in data if isinstance(x, bytes)]
+    if conn is not None:
+        try:
+            _, extra = conn.response("COPYUID")
+            texts += [b"COPYUID " + x for x in extra or [] if isinstance(x, bytes)]
+        except Exception:  # noqa: BLE001
+            pass
+    for t in texts:
+        m = re.search(rb"COPYUID \d+ ([\d:,]+) ([\d:,]+)", t)
+        if m:
+            old, new = _expand_set(m.group(1).decode()), _expand_set(m.group(2).decode())
+            if len(old) == len(new):
+                return dict(zip(old, new))
+    return {}
+
+
+def _expand_set(s: str) -> list[int]:
+    out: list[int] = []
+    for part in s.split(","):
+        if ":" in part:
+            a, b = (int(x) for x in part.split(":"))
+            out.extend(range(a, b + 1) if a <= b else range(a, b - 1, -1))
+        elif part.isdigit():
+            out.append(int(part))
+    return out
 
 
 # ---------------------------------------------------------------- FETCH 응답 판독
